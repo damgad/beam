@@ -3,20 +3,25 @@
 
 #ifdef _WIN32
 #include <windows.h>
-void usleep(unsigned int usec)
-{
-	HANDLE timer;
-	LARGE_INTEGER ft;
 
-	ft.QuadPart = -(10 * (__int64)usec);
+/**
+ * Alternative to POSIX usleep that may be run on Windows platform.
+ */
+void usleep(__int64 usec) {
+    HANDLE timer;
+    LARGE_INTEGER timerDueTime;
 
-	timer = CreateWaitableTimer(NULL, TRUE, NULL);
-	SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
-	WaitForSingleObject(timer, INFINITE);
-	CloseHandle(timer);
+    // Timer is measuring in 100 of nanoseconds, negative means relative
+    timerDueTime.QuadPart = -(10 * usec);
+
+    timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    SetWaitableTimer(timer, &timerDueTime, 0, NULL, NULL, 0);
+    WaitForSingleObject(timer, INFINITE);
+    CloseHandle(timer);
 }
+
 #else
 #include "unistd.h"
 #endif
 
-#endif
+#endif //BEAM_CROSSPLATFORM_UNISTD_H

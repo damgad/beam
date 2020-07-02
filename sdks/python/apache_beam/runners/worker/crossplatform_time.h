@@ -5,65 +5,33 @@
 
 #ifdef _WIN32
 #include <windows.h>
-LARGE_INTEGER
-getFILETIMEoffset()
-{
-    SYSTEMTIME s;
-    FILETIME f;
-    LARGE_INTEGER t;
 
-    s.wYear = 1970;
-    s.wMonth = 1;
-    s.wDay = 1;
-    s.wHour = 0;
-    s.wMinute = 0;
-    s.wSecond = 0;
-    s.wMilliseconds = 0;
-    SystemTimeToFileTime(&s, &f);
-    t.QuadPart = f.dwHighDateTime;
-    t.QuadPart <<= 32;
-    t.QuadPart |= f.dwLowDateTime;
-    return (t);
-}
+/**
+ * Alternative to POSIX clock_gettime that may be run on Windows platform. The clk_id parameter is
+ * ignored, and function always act as for CLOCK_MONOTONIC. Windows performance counter is used.
+ */
+int clock_gettime(int clk_id, struct timespec *tv) {
+    static LARGE_INTEGER counterFrequency = {0};
+    LARGE_INTEGER counterValue;
 
-int
-clock_gettime(int X, struct timeval *tv)
-{
-    LARGE_INTEGER           t;
-    FILETIME            f;
-    double                  microseconds;
-    static LARGE_INTEGER    offset;
-    static double           frequencyToMicroseconds;
-    static int              initialized = 0;
-    static BOOL             usePerformanceCounter = 0;
-
-    if (!initialized) {
-        LARGE_INTEGER performanceFrequency;
-        initialized = 1;
-        usePerformanceCounter = QueryPerformanceFrequency(&performanceFrequency);
-        if (usePerformanceCounter) {
-            QueryPerformanceCounter(&offset);
-            frequencyToMicroseconds = (double)performanceFrequency.QuadPart / 1000000.;
-        } else {
-            offset = getFILETIMEoffset();
-            frequencyToMicroseconds = 10.;
+    if (0 == counterFrequency.QuadPart) {
+        if (0 == QueryPerformanceFrequency(&counterFrequency)) {
+            /* System doesn't support performance counters. It's guaranteed to not happen
+            on systems that run Windows XP or later */
+            return -1;
         }
     }
-    if (usePerformanceCounter) QueryPerformanceCounter(&t);
-    else {
-        GetSystemTimeAsFileTime(&f);
-        t.QuadPart = f.dwHighDateTime;
-        t.QuadPart <<= 32;
-        t.QuadPart |= f.dwLowDateTime;
+    if (0 == QueryPerformanceCounter(&counterValue)){
+        /* Again, it may only fail on systems before Windows XP */
+        return -1;
     }
 
-    t.QuadPart -= offset.QuadPart;
-    microseconds = (double)t.QuadPart / frequencyToMicroseconds;
-    t.QuadPart = microseconds;
-    tv->tv_sec = t.QuadPart / 1000000;
-    tv->tv_usec = t.QuadPart % 1000000;
-    return (0);
+    tv->tv_sec = counterValue.QuadPart / counterFrequency.QuadPart;
+    #pragma warning( suppress : 4244 ) // nanoseconds may not exceed billion, therefore it's safe to cast
+    tv->tv_nsec = ((counterValue.QuadPart % counterFrequency.QuadPart) * 1000000000) / counterFrequency.QuadPart;
+
+    return 0;
 }
 #endif
 
-#endif
+#endif //BEAM_CROSSPLATFORM_TIME_H
